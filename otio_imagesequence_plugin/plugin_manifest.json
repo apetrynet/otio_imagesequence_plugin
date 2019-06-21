@@ -1,0 +1,19 @@
+{
+    "OTIO_SCHEMA" : "PluginManifest.1",
+    "schemadefs" : [
+        {
+            "OTIO_SCHEMA" : "SchemaDef.1",
+            "name" : "imagesequence_reference",
+            "execution_scope" : "in process",
+            "filepath" : "schema/imagesequence_reference.py"
+         }
+    ],
+    "media_linkers" : [
+        {
+            "OTIO_SCHEMA" : "MediaLinker.1",
+            "name" : "imagesequence_linker",
+            "execution_scope" : "in process",
+            "filepath" : "operations/imagesequence_linker.py"
+         }
+    ]
+}
