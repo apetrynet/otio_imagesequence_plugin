@@ -1,17 +1,22 @@
 import os
+import sys
 import re
 import time
 import copy
-import shlex
 import operator
 
 import OpenImageIO as oiio
 import opentimelineio as otio
 
 
+# Load our custom schemadef
 otio.schema.schemadef.from_name('imagesequence_reference')
 
+# Check if we're using one of OTIO's console tools (bit of a hack..)
+USE_FIRST = 'console' in sys.argv[0]
 
+
+# Timer decorator used under development to measure time spent
 def timeit(method):     # pragma: nocover
     def timed(*args, **kw):
         ts = time.time()
@@ -23,18 +28,55 @@ def timeit(method):     # pragma: nocover
     return timed
 
 
-def get_timecode_str(path):
-    buf = oiio.ImageBuf(str(path))
+def get_fps(buf):
+    """Get frame rate from source ImageBuf
+
+    :param buf: oiio.ImageBuf
+    :return: `float` or `None`
+    """
+
     spec = buf.spec()
-    tc = None
-    tc_bin = None
-    if not buf.has_error and not spec.getattribute('oiio:Movie'):
+    attrlut = dict(
+        exr='FramesPerSecond',
+        dpx='dpx:FrameRate'
+    )
+
+    _, ext = os.path.splitext(buf.name)
+    attrname = attrlut.get(ext[1:].lower())
+
+    if attrname:
+        value = spec.getattribute(attrname)
+        if isinstance(value, float):
+            return round(value, 3)
+
+        elif isinstance(value, tuple):
+            return round(float(value[0]) / float(value[1]), 3)
+
+        return value
+
+    return None
+
+
+def get_timecode_str(buf):
+    """Get TimeCode from source ImageBuf
+
+    :param buf: oiio.ImageBuf
+    :return: `str` or `None`
+    """
+
+    spec = buf.spec()
+    tc = spec.getattribute('timecode')
+
+    if not tc and not spec.getattribute('oiio:Movie'):
+        tc_bin = None
         for v in spec.extra_attribs:
             if v.name == "smpte:TimeCode":
+                # OIIO 2.x
                 if isinstance(v.value, tuple):
                     tc_bin, _ = v.value
 
                 else:
+                    # OIIO 1.8.x
                     tc_bin = v.value
 
                 break
@@ -52,6 +94,11 @@ def get_timecode_str(path):
 
 
 class FileCache(object):
+    """ Cache to look for new files and hold account of what it previously
+     found along the way for faster lookup later on.
+
+    """
+
     __slots__ = ['file_cache']
 
     file_cache = dict()
@@ -63,8 +110,15 @@ class FileCache(object):
         if root:
             self.dig_for_files(root)
 
-    @timeit
+    # @timeit
     def dig_for_files(self, root):
+        """Dig for all files under the given root and store findings
+         in the cache.
+
+        :param root: `str` root location to begin digging for files
+        :return: None
+        """
+
         self.file_cache.setdefault(root, dict())
 
         for dirpath, dirnames, filenames in os.walk(root, topdown=False):
@@ -77,6 +131,8 @@ class FileCache(object):
             for filename in filenames:
                 numbers = re.findall('[0-9]+', filename)
                 pat = numbers and numbers[-1] or '\a'
+
+                # identifier used to collect related images
                 identifier = re.sub(pat, '#', filename)
 
                 self.file_cache[dirpath].setdefault(
@@ -84,8 +140,17 @@ class FileCache(object):
                     dict(files=list())
                 )['files'].append(filename)
 
-    @timeit
+    # @timeit
     def locate_files(self, criteria, root=None, force=False):
+        """Locate files which match the given criteria.
+
+        :param criteria: `dict` containing regex and timecode tests
+        :param root: `str` root folder to look for files in
+         `FileCache` will dig for files at this root if not found in cache
+        :param force: `bool` Force a new dig at passed root in case of new files
+        :return:
+        """
+
         results = dict()
         if root:
             if root not in self.file_cache or force:
@@ -113,41 +178,63 @@ class FileCache(object):
 
     # @timeit
     def check_criteria(self, criteria, dirname, identifier, files):
-        results = list()
+        """Check that the passed files match the timecode and naming we're
+          looking for
+
+        :param criteria: `dict` containing regex and timecode tests
+        :param dirname: str` with dirname of file location
+        :param identifier: `str` filename with hashed frame number
+        :param files: `list` of first and last file found
+        :return: `bool` reflecting a match or not
+        """
+
         for index, filename in enumerate(files):
             fullpath = os.path.join(dirname, filename)
 
             valid_path = criteria['regex'].search(fullpath)
             if not valid_path:
-                results.append(False)
+                return False
 
-            for key, tests in criteria['metadata'].items():
-                if not isinstance(tests, list):
-                    tests = [tests]
+            buf = oiio.ImageBuf(str(fullpath))
+            if buf.has_error:
+                return False
 
-                if key == 'timecode':
-                    if index == 0:
-                        value = self.file_cache[dirname][identifier].setdefault(
-                            'tc_in',
-                            get_timecode_str(fullpath)
-                        )
+            if index == 0:
+                value = self.file_cache[dirname][identifier].setdefault(
+                    'tc_in',
+                    get_timecode_str(buf)
+                )
+                self.file_cache[dirname][identifier].setdefault(
+                    'fps',
+                    get_fps(buf)
+                )
 
-                    else:
-                        value = self.file_cache[dirname][identifier].setdefault(
-                            'tc_out',
-                            get_timecode_str(fullpath)
-                        )
+            else:
+                value = self.file_cache[dirname][identifier].setdefault(
+                    'tc_out',
+                    get_timecode_str(buf)
+                )
 
-                for test in tests:
-                    func, test_value = test
+            for test in criteria['tests']:
+                func, test_value = test
 
-                    if not func(value, test_value):
-                        results.append(False)
+                if not func(value, test_value):
+                    return False
 
-            return not results
+        return True
 
 
 def create_sequence_reference(in_clip, dirname, data):
+    """Create an ImageSequenceReference object to pass onto in_clip's
+     media_reference.
+
+    :param in_clip: `otio.schema.Clip`
+    :param dirname: `str` with dirname of file location
+    :param data: `dict` containing TimeCodes, fps and files found
+    :return: `otio.schemadef.imagesequence_reference.ImageSequenceReference`
+    """
+
+    # Regex to locate frame number
     frame_reg = re.compile('(?<=[._])[0-9]+(?=\.\w+$)')
 
     duration = len(data['files'])
@@ -176,10 +263,7 @@ def create_sequence_reference(in_clip, dirname, data):
     )
 
     name = frame_reg.sub('%0{n}d'.format(n=len(frame_num)), data['files'][0])
-    fullpath = os.path.join(
-        dirname,
-        name
-    )
+    fullpath = os.path.join(dirname, name)
 
     seq = otio.schemadef.imagesequence_reference.ImageSequenceReference()
     seq.name = name
@@ -191,42 +275,56 @@ def create_sequence_reference(in_clip, dirname, data):
 
 
 def link_media_reference(in_clip, media_linker_argument_map):
-    root = media_linker_argument_map.get('root', os.curdir)
-    basename = media_linker_argument_map.get(
-        'basename',
-        in_clip.name
-    )
-    ext = media_linker_argument_map.get('ext', None)
-
-    criteria = {
-        'regex': re.compile(
-            r'({basename}).*(\.{ext})$'.format(basename=basename, ext=ext)
-        ),
-        'metadata': {
-            'timecode': [
-                [
-                    operator.ge,
-                    otio.opentime.to_timecode(
-                        in_clip.source_range.start_time
-                    )
-                ],
-                [
-                    operator.lt,
-                    otio.opentime.to_timecode(
-                        in_clip.source_range.start_time +
-                        in_clip.source_range.duration
-                    )
-                ]
-            ]
+    """Link images that match the timecodes from the `in_clip.source_range`.
+     The `media_linker_argument_map` should provide a few keys:
+        {
+            'root': '/root/path/to/search/for/files',
+            'identifier': '.*plate*.'  # regex to narrow down the search,
+            'ext': 'exr'  # file extension to narrow down search
         }
 
+    :param in_clip:
+    :param media_linker_argument_map:
+    :return: None
+    """
+
+    root = media_linker_argument_map.get('root', os.curdir)
+    identifier = media_linker_argument_map.get('identifier', '')
+    ext = media_linker_argument_map.get('ext')
+
+    # Search criteria
+    criteria = {
+        'regex': re.compile(
+            r'({identifier}).*(\.{ext})$'.format(identifier=identifier, ext=ext)
+        ),
+        'tests': [
+            [
+                operator.ge,
+                otio.opentime.to_timecode(
+                    in_clip.source_range.start_time
+                )
+            ],
+            [
+                operator.lt,
+                otio.opentime.to_timecode(
+                    in_clip.source_range.start_time +
+                    in_clip.source_range.duration
+                )
+            ]
+        ]
     }
 
-    loc = FileCache()
-    results = loc.locate_files(criteria, root=root)
+    cache = FileCache()
+    results = cache.locate_files(criteria, root=root)
 
-    # Use the first result only
+    candidates = list()
     for dirname, data in results.items():
-        seq = create_sequence_reference(in_clip, dirname, data)
-        in_clip.media_reference = seq
-        break
+        if in_clip.name in data['files'][0]:
+            seq = create_sequence_reference(in_clip, dirname, data)
+            candidates.append(seq)
+
+    # Use the first hit when linked with OTIO console tools.
+    if candidates and USE_FIRST:
+        return candidates[0]
+
+    return candidates or None
