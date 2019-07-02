@@ -313,17 +313,18 @@ def create_sequence_reference(in_clip, dirname, data):
     return seq
 
 
+# @timeit
 def link_media_reference(in_clip, media_linker_argument_map):
     """Link images that match the timecodes from the `in_clip.source_range`.
-     The `media_linker_argument_map` should provide a few keys:
+     The `media_linker_argument_map` should/could provide a few keys:
         {
             'root': '/root/path/to/search/for/files',
-            'pattern': '.*plate*.'  # regex to narrow down the search,
+            'pattern': '.*plate.*'  # regex to narrow down the search,
             'ext': 'exr'  # file extension to narrow down search
         }
 
-    :param in_clip:
-    :param media_linker_argument_map:
+    :param in_clip: `otio.schema.Clip`
+    :param media_linker_argument_map: `dict` with kwargs
     :return: `None`, `ImageSequenceReference` or list of such
     """
 
@@ -358,13 +359,16 @@ def link_media_reference(in_clip, media_linker_argument_map):
 
     candidates = list()
     for dirname, data in results.items():
-        if in_clip.name in data['files'][0]:
-            seq = create_sequence_reference(in_clip, dirname, data)
-            candidates.append(seq)
+        # If we have a clip name we'd prefer using files that match
+        if in_clip.name and in_clip.name not in data['files'][0]:
+            continue
 
-    # Use the first hit when linked with OTIO console tools.
+        seq = create_sequence_reference(in_clip, dirname, data)
+        candidates.append(seq)
+
+    # Use the first hit when linker is used with OTIO console tools.
     if candidates and USE_FIRST:
         return candidates[0]
 
-    # When used in custom applications you may want to choose best fit
+    # When linker is used in custom applications you may want to choose best fit
     return candidates or None
