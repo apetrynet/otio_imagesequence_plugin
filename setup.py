@@ -20,7 +20,7 @@ setup(
     platforms='any',
     version='1.0.0',
     description='Schemadef and media linker to work with image sequences',
-    license='Modified Apache 2.0 License',
+    license='MIT License',
     author='Daniel Flehner Heen',
     author_email='flehnerheener@gmail.com',
     url='http://opentimeline.io'

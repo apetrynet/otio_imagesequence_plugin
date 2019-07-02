@@ -1,3 +1,42 @@
+# MIT License
+#
+# Copyright (c) 2019- Daniel Flehner Heen (Storm Studios)
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+"""
+This media linker requires OpenImageIO with python bindings to be available.
+It uses OIIO to fetch TimeCode and FPS from source files.
+
+Example usage:
+
+OTIO_PLUGIN_MANIFEST_PATH=./otio_imagesequence_plugin/plugin_manifest.json \
+otioview -m imagesequence_linker \
+-M root=/net/projects/big_dump_of_source_files/ \
+-M pattern='.*proxy-3k.*' \
+-M ext=exr \
+-a rate=23.976 \
+my_efforts_V1.edl
+"""
+
+
 import os
 import sys
 import re
@@ -23,7 +62,7 @@ def timeit(method):     # pragma: nocover
         result = method(*args, **kw)
         te = time.time()
 
-        print '\nfunc: %s, %2.6f sec' % (method.__name__, te - ts)
+        print ('\nfunc: %s, %2.6f sec' % (method.__name__, te - ts))
         return result
     return timed
 
@@ -279,23 +318,23 @@ def link_media_reference(in_clip, media_linker_argument_map):
      The `media_linker_argument_map` should provide a few keys:
         {
             'root': '/root/path/to/search/for/files',
-            'identifier': '.*plate*.'  # regex to narrow down the search,
+            'pattern': '.*plate*.'  # regex to narrow down the search,
             'ext': 'exr'  # file extension to narrow down search
         }
 
     :param in_clip:
     :param media_linker_argument_map:
-    :return: None
+    :return: `None`, `ImageSequenceReference` or list of such
     """
 
     root = media_linker_argument_map.get('root', os.curdir)
-    identifier = media_linker_argument_map.get('identifier', '')
+    pattern = media_linker_argument_map.get('pattern', '')
     ext = media_linker_argument_map.get('ext')
 
     # Search criteria
     criteria = {
         'regex': re.compile(
-            r'({identifier}).*(\.{ext})$'.format(identifier=identifier, ext=ext)
+            r'({pattern}).*(\.{ext})$'.format(pattern=pattern, ext=ext)
         ),
         'tests': [
             [
@@ -327,4 +366,5 @@ def link_media_reference(in_clip, media_linker_argument_map):
     if candidates and USE_FIRST:
         return candidates[0]
 
+    # When used in custom applications you may want to choose best fit
     return candidates or None
