@@ -24,12 +24,12 @@
 """
 This media linker requires OpenImageIO with python bindings to be available.
 It uses OIIO to fetch metadata from source files.
-The imagesequence_linker will use frame numbers of files to match against
-clip's source_range for image formats without TimeCode like jpg's etc.
+Frame numbers of source files will be used to match against clip's
+source_range for image formats without TimeCode, like jpg's etc.
 
 Example usage:
 
-OTIO_PLUGIN_MANIFEST_PATH=./otio_imagesequence_plugin/plugin_manifest.json \
+OTIO_PLUGIN_MANIFEST_PATH=../plugin_manifest.json \
 otioview -m imagesequence_linker \
 -M root=/net/projects/big_dump_of_source_files/ \
 -M pattern='.*proxy-3k.*' \
@@ -75,7 +75,7 @@ def timeit(method):     # pragma: nocover
 def get_fps(buf):
     """Get frame rate from source ImageBuf
 
-    :param buf: oiio.ImageBuf
+    :param buf: `oiio.ImageBuf`
     :return: `float` or `None`
     """
 
@@ -104,28 +104,26 @@ def get_fps(buf):
 def get_timecode_str(buf):
     """Get TimeCode from source ImageBuf
 
-    :param buf: oiio.ImageBuf
+    :param buf: `oiio.ImageBuf`
     :return: `str` or `None`
     """
 
     spec = buf.spec()
     tc = spec.getattribute('timecode')
 
-    if not tc and not spec.getattribute('oiio:Movie'):
-        tc_bin = None
-        for v in spec.extra_attribs:
-            if v.name == "smpte:TimeCode":
-                # OIIO 2.x
-                if isinstance(v.value, tuple):
-                    tc_bin, _ = v.value
+    if not tc:
+        if oiio.VERSION < 20000:
+            tc_param = next(
+                (i for i in spec.extra_attribs if i.name == 'smpte:TimeCode'),
+                None
+            )
+            tc_bin = tc_param and tc_param.value or None
 
-                else:
-                    # OIIO 1.8.x
-                    tc_bin = v.value
+        else:
+            tc_param = spec.getattribute('smpte:TimeCode')
+            tc_bin = tc_param and int(tc_param[0]) or None
 
-                break
-
-        if tc_bin is not None:
+        if tc_bin:
             bits = range(0, 32, 8)
             tc = ':'.join(
                 [
@@ -242,7 +240,7 @@ class FileCache(object):
             if not valid_path:
                 return False
 
-            buf = oiio.ImageBuf(str(fullpath))
+            buf = oiio.ImageBuf(fullpath)
             if buf.has_error:
                 return False
 
