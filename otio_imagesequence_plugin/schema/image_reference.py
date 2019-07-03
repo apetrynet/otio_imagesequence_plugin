@@ -22,7 +22,7 @@
 
 
 """
-Implementation of the ImageSequenceReference media reference schema.
+Implementation of the ImageReference media reference schema.
 """
 
 import copy
@@ -31,13 +31,13 @@ import opentimelineio as otio
 
 
 @otio.core.register_type
-class ImageSequenceReference(otio.core.MediaReference):
+class ImageReference(otio.core.MediaReference):
     """Reference to image sequence via a url, for example
      "file:///var/tmp/foo.%04d.exr"
     """
 
-    _serializable_label = "ImageSequenceReference.1"
-    _name = "ImageSequenceReference"
+    _serializable_label = "ImageReference.1"
+    _name = "ImageReference"
 
     target_url = otio.core.serializable_field(
         "target_url",
@@ -74,9 +74,9 @@ class ImageSequenceReference(otio.core.MediaReference):
         self.frame_range = frame_range
 
     def __str__(self):
-        return 'ImageSequenceReference("{}")'.format(self.target_url)
+        return 'ImageReference("{}")'.format(self.target_url)
 
     def __repr__(self):
-        return 'otio.schemadef.ImageSequenceReference(target_url={})'.format(
+        return 'otio.schemadef.ImageReference(target_url={})'.format(
             repr(self.target_url)
         )

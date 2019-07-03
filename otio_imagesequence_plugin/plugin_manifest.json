@@ -3,9 +3,9 @@
     "schemadefs" : [
         {
             "OTIO_SCHEMA" : "SchemaDef.1",
-            "name" : "imagesequence_reference",
+            "name" : "image_reference",
             "execution_scope" : "in process",
-            "filepath" : "schema/imagesequence_reference.py"
+            "filepath" : "schema/image_reference.py"
          }
     ],
     "media_linkers" : [

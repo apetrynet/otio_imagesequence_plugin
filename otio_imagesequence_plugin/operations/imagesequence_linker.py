@@ -23,7 +23,9 @@
 
 """
 This media linker requires OpenImageIO with python bindings to be available.
-It uses OIIO to fetch TimeCode and FPS from source files.
+It uses OIIO to fetch metadata from source files.
+The imagesequence_linker will use frame numbers of files to match against
+clip's source_range for image formats without TimeCode like jpg's etc.
 
 Example usage:
 
@@ -49,10 +51,13 @@ import opentimelineio as otio
 
 
 # Load our custom schemadef
-otio.schema.schemadef.from_name('imagesequence_reference')
+otio.schema.schemadef.from_name('image_reference')
 
 # Check if we're using one of OTIO's console tools (bit of a hack..)
 USE_FIRST = 'console' in sys.argv[0]
+
+# Regex to locate frame number
+frame_regex = re.compile('(?<=[._])[0-9]+(?=\.\w+$)')
 
 
 # Timer decorator used under development to measure time spent
@@ -218,7 +223,8 @@ class FileCache(object):
     # @timeit
     def check_criteria(self, criteria, dirname, identifier, files):
         """Check that the passed files match the timecode and naming we're
-          looking for
+          looking for. Alternatively it will attempt to match frame number
+          against source_range
 
         :param criteria: `dict` containing regex and timecode tests
         :param dirname: str` with dirname of file location
@@ -226,6 +232,8 @@ class FileCache(object):
         :param files: `list` of first and last file found
         :return: `bool` reflecting a match or not
         """
+
+        testname = 'timecode'
 
         for index, filename in enumerate(files):
             fullpath = os.path.join(dirname, filename)
@@ -247,44 +255,59 @@ class FileCache(object):
                     'fps',
                     get_fps(buf)
                 )
-
             else:
-                value = self.file_cache[dirname][identifier].setdefault(
-                    'tc_out',
-                    get_timecode_str(buf)
-                )
+                value = get_timecode_str(buf)
 
-            for test in criteria['tests']:
-                func, test_value = test
+            # No TimeCode found. Try using frame number
+            if not value:
+                testname = 'frames'
+                try:
+                    if index == 0:
+                        value = self.file_cache[dirname][identifier].setdefault(
+                            'first_frame',
+                            int(frame_regex.search(filename).group())
+                        )
+                    else:
+                        value = int(frame_regex.search(filename).group())
 
-                if not func(value, test_value):
-                    return False
+                except (ValueError, AttributeError):
+                    value = None
+
+            func, test_value = criteria['tests'][testname][index]
+            if not func(test_value, value):
+                return False
 
         return True
 
 
 def create_sequence_reference(in_clip, dirname, data):
-    """Create an ImageSequenceReference object to pass onto in_clip's
+    """Create an ImageReference object to pass onto in_clip's
      media_reference.
 
     :param in_clip: `otio.schema.Clip`
     :param dirname: `str` with dirname of file location
     :param data: `dict` containing TimeCodes, fps and files found
-    :return: `otio.schemadef.imagesequence_reference.ImageSequenceReference`
+    :return: `otio.schemadef.imagesequence_reference.ImageReference`
     """
-
-    # Regex to locate frame number
-    frame_reg = re.compile('(?<=[._])[0-9]+(?=\.\w+$)')
 
     duration = len(data['files'])
     rate = data.get('fps') or in_clip.source_range.start_time.rate
-    frame_num = frame_reg.search(data['files'][0]).group()
+    frame_num = frame_regex.search(data['files'][0]).group()
+
+    if data['tc_in']:
+        start_time = otio.opentime.from_timecode(
+            data['tc_in'] or data['first_frame'],
+            rate=rate
+        )
+
+    else:
+        start_time = otio.opentime.RationalTime(
+            value=data['first_frame'],
+            rate=rate
+        )
 
     available_range = otio.opentime.TimeRange(
-        otio.opentime.from_timecode(
-            data['tc_in'],
-            rate=rate
-        ),
+        start_time,
         otio.opentime.RationalTime(
             value=duration,
             rate=rate
@@ -301,10 +324,10 @@ def create_sequence_reference(in_clip, dirname, data):
         )
     )
 
-    name = frame_reg.sub('%0{n}d'.format(n=len(frame_num)), data['files'][0])
+    name = frame_regex.sub('%0{n}d'.format(n=len(frame_num)), data['files'][0])
     fullpath = os.path.join(dirname, name)
 
-    seq = otio.schemadef.imagesequence_reference.ImageSequenceReference()
+    seq = otio.schemadef.image_reference.ImageReference()
     seq.name = name
     seq.target_url = 'file://{path}'.format(path=fullpath)
     seq.available_range = available_range
@@ -325,7 +348,7 @@ def link_media_reference(in_clip, media_linker_argument_map):
 
     :param in_clip: `otio.schema.Clip`
     :param media_linker_argument_map: `dict` with kwargs
-    :return: `None`, `ImageSequenceReference` or list of such
+    :return: `None`, `ImageReference` or list of such
     """
 
     root = media_linker_argument_map.get('root', os.curdir)
@@ -337,21 +360,44 @@ def link_media_reference(in_clip, media_linker_argument_map):
         'regex': re.compile(
             r'({pattern}).*(\.{ext})$'.format(pattern=pattern, ext=ext)
         ),
-        'tests': [
-            [
-                operator.ge,
-                otio.opentime.to_timecode(
-                    in_clip.source_range.start_time
-                )
+        'tests': {
+            'timecode': [
+                [
+                    operator.ge,
+                    otio.opentime.to_timecode(
+                        in_clip.source_range.start_time
+                    )
+                ],
+                [
+                    operator.le,
+                    otio.opentime.to_timecode(
+                        in_clip.source_range.start_time +
+                        in_clip.source_range.duration -
+                        otio.opentime.RationalTime(
+                            1,
+                            in_clip.source_range.start_time.rate
+                        )
+                    )
+                ]
             ],
-            [
-                operator.lt,
-                otio.opentime.to_timecode(
-                    in_clip.source_range.start_time +
-                    in_clip.source_range.duration
-                )
+            'frames': [
+                [
+                    operator.ge,
+                    in_clip.source_range.start_time.value
+                ],
+                [
+                    operator.le,
+                    (
+                        in_clip.source_range.start_time +
+                        in_clip.source_range.duration -
+                        otio.opentime.RationalTime(
+                            1,
+                            in_clip.source_range.start_time.rate
+                        )
+                    ).value
+                ]
             ]
-        ]
+        }
     }
 
     cache = FileCache()
