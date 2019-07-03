@@ -31,8 +31,8 @@ import opentimelineio as otio
 
 
 @otio.core.register_type
-class ImageReference(otio.core.MediaReference):
-    """Reference to image sequence via a url, for example
+class ImageReference(otio.schema.ExternalReference):
+    """Reference to images via a url, for example
      "file:///var/tmp/foo.%04d.exr"
     """
 
@@ -72,6 +72,26 @@ class ImageReference(otio.core.MediaReference):
             frame_range = copy.deepcopy(available_range)
 
         self.frame_range = frame_range
+
+    def map_source_range_to_frame_range(self, source_range):
+        """ Used to get a valid source_range when frame_range differs from
+         available_range. Useful if the frames have been renumbered to 1001-1200
+         for instance.
+
+        :param source_range: `otio.opentime.TimeRange` a clip's source_range
+        :return: `otio.opentime.TimeRange` mapped to valid frame numbers
+        """
+
+        # If frame numbers match TimeCode there's no need for additional mapping
+        if self.frame_range == self.available_range:
+            return source_range
+
+        in_offset = self.available_range.start_time - source_range.start_time
+
+        return otio.opentime.TimeRange(
+            self.frame_range.start_time + in_offset,
+            source_range.duration
+        )
 
     def __str__(self):
         return 'ImageReference("{}")'.format(self.target_url)

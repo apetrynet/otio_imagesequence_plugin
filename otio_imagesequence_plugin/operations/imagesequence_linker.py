@@ -327,7 +327,8 @@ def create_sequence_reference(in_clip, dirname, data):
 
     seq = otio.schemadef.image_reference.ImageReference()
     seq.name = name
-    seq.target_url = 'file://{path}'.format(path=fullpath)
+    # seq.target_url = 'file://{path}'.format(path=fullpath)
+    seq.target_url = fullpath
     seq.available_range = available_range
     seq.frame_range = frame_range
 
