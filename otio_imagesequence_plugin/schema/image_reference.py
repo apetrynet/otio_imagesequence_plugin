@@ -60,7 +60,7 @@ class ImageReference(otio.schema.ExternalReference):
         frame_range=None,
         metadata=None,
     ):
-        otio.core.MediaReference.__init__(
+        otio.schema.ExternalReference.__init__(
             self,
             available_range=available_range,
             metadata=metadata
