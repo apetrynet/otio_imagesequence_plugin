@@ -31,11 +31,11 @@ Example usage:
 
 OTIO_PLUGIN_MANIFEST_PATH=../plugin_manifest.json \
 otioview -m imagesequence_linker \
--M root=/net/projects/big_dump_of_source_files/ \
--M pattern='.*proxy-3k.*' \
+-M root=../sample_sequence/ \
+-M pattern='.*sample.*' \
 -M ext=exr \
--a rate=23.976 \
-my_efforts_V1.edl
+-a rate=24 \
+../sample_sequence/sample_sequence.edl
 """
 
 
@@ -54,7 +54,15 @@ import opentimelineio as otio
 otio.schema.schemadef.from_name('image_reference')
 
 # Check if we're using one of OTIO's console tools (bit of a hack..)
-USE_FIRST = 'console' in sys.argv[0]
+console_tools = [
+    'otioview',
+    'otiocat',
+    'otioconvert',
+    'otiostat'
+]
+USE_FIRST = (
+    'console' in sys.argv[0] or os.path.basename(sys.argv[0]) in console_tools
+)
 
 # Regex to locate frame number
 frame_regex = re.compile('(?<=[._])[0-9]+(?=\.\w+$)')
@@ -272,6 +280,7 @@ class FileCache(object):
                     value = None
 
             func, test_value = criteria['tests'][testname][index]
+
             if not func(test_value, value):
                 return False
 

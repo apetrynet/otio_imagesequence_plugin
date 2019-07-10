@@ -8,6 +8,9 @@ import opentimelineio as otio
 This example will create an RV session with linked image-sequence based 
 media for your edl.
 
+Example: 
+OTIO_PLUGIN_MANIFEST_PATH=./plugin_manifest.json python ./example.py
+
 PLEASE NOTE:
  that I replace the source_range of the clip. This is because the 
 rv_session adapter doesn't know how to handle the ImageReference files and 
@@ -20,7 +23,7 @@ mehtod when needed in adapters like rv_session.
 
 def get_rv_path():
     for p in os.environ.get('PATH', '').split(os.pathsep):
-        if re.search('rv[0-9]+\.[0-9]+\.[0-9]+?', p):
+        if re.search('rv-[\w-]+([0-9]+\.[0-9]+\.[0-9]+)', p):
             return p
 
     return None
@@ -38,14 +41,14 @@ os.environ.update(otioenv)
 
 
 def main():
-    edl_path = 'my_efforts_V1.edl'
+    edl_path = './sample_sequence/sample_sequence.edl'
     args = {
-            'pattern': '.*proxy.*',
+            'pattern': '.*sample.*',
             'ext': 'exr',
-            'root': '/path/to/source/plates'
+            'root': './sample_sequence/'
         }
 
-    tl = otio.adapters.read_from_file(edl_path, 'cmx_3600', rate=23.976)
+    tl = otio.adapters.read_from_file(edl_path, 'cmx_3600', rate=24)
     linker = otio.media_linker.from_name('imagesequence_linker')
 
     for clip in tl.each_clip():
@@ -65,7 +68,7 @@ def main():
                 ) or 0
 
                 if index > len(results) - 1:
-                    print 'You chose out of range so I used index 0'
+                    print('You chose out of range so I used index 0')
                     index = 0
 
             seq = results[int(index)]
@@ -74,7 +77,7 @@ def main():
                 clip.source_range
             )
 
-    otio.adapters.write_to_file(tl, './my_efforts_V1.rv', 'rv_session')
+    otio.adapters.write_to_file(tl, './sample_sequence.rv', 'rv_session')
 
 
 if __name__ == '__main__':
