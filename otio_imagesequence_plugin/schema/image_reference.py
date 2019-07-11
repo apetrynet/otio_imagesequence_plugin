@@ -86,7 +86,7 @@ class ImageReference(otio.schema.ExternalReference):
         if self.frame_range == self.available_range:
             return source_range
 
-        in_offset = self.available_range.start_time - source_range.start_time
+        in_offset = source_range.start_time - self.available_range.start_time
 
         return otio.opentime.TimeRange(
             self.frame_range.start_time + in_offset,
