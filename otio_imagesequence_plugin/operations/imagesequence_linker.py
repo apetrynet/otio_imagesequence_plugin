@@ -31,11 +31,11 @@ Example usage:
 
 OTIO_PLUGIN_MANIFEST_PATH=../plugin_manifest.json \
 otioview -m imagesequence_linker \
--M root=../sample_sequence/ \
--M pattern='.*sample.*' \
+-M root=/net/projects/big_dump_of_source_files/ \
+-M pattern='.*proxy-3k.*' \
 -M ext=exr \
--a rate=24 \
-../sample_sequence/sample_sequence.edl
+-a rate=23.976 \
+my_efforts_V1.edl
 """
 
 
@@ -50,19 +50,8 @@ import OpenImageIO as oiio
 import opentimelineio as otio
 
 
-# Load our custom schemadef
-otio.schema.schemadef.from_name('image_reference')
-
 # Check if we're using one of OTIO's console tools (bit of a hack..)
-console_tools = [
-    'otioview',
-    'otiocat',
-    'otioconvert',
-    'otiostat'
-]
-USE_FIRST = (
-    'console' in sys.argv[0] or os.path.basename(sys.argv[0]) in console_tools
-)
+USE_FIRST = 'console' in sys.argv[0]
 
 # Regex to locate frame number
 frame_regex = re.compile('(?<=[._])[0-9]+(?=\.\w+$)')
@@ -281,7 +270,7 @@ class FileCache(object):
 
             func, test_value = criteria['tests'][testname][index]
 
-            if not func(test_value, value):
+            if not func(value, test_value):
                 return False
 
         return True
@@ -320,26 +309,17 @@ def create_sequence_reference(in_clip, dirname, data):
             rate=rate
         )
     )
-    frame_range = otio.opentime.TimeRange(
-        otio.opentime.RationalTime(
-            value=int(frame_num),
-            rate=rate
-        ),
-        otio.opentime.RationalTime(
-            value=duration,
-            rate=rate
-        )
+
+    prefix, suffix = frame_regex.split(data['files'][0])
+    seq = otio.schema.ImageSequenceReference(
+        target_url_base=dirname + os.sep,
+        name_prefix=prefix,
+        name_suffix=suffix,
+        start_value=int(frame_num),
+        rate=rate,
+        image_number_zero_padding=len(frame_num),
+        available_range=available_range
     )
-
-    name = frame_regex.sub('%0{n}d'.format(n=len(frame_num)), data['files'][0])
-    fullpath = os.path.join(dirname, name)
-
-    seq = otio.schemadef.image_reference.ImageReference()
-    seq.name = name
-    # seq.target_url = 'file://{path}'.format(path=fullpath)
-    seq.target_url = fullpath
-    seq.available_range = available_range
-    seq.frame_range = frame_range
 
     return seq
 

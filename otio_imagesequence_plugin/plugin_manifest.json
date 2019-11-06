@@ -1,13 +1,5 @@
 {
     "OTIO_SCHEMA" : "PluginManifest.1",
-    "schemadefs" : [
-        {
-            "OTIO_SCHEMA" : "SchemaDef.1",
-            "name" : "image_reference",
-            "execution_scope" : "in process",
-            "filepath" : "schema/image_reference.py"
-         }
-    ],
     "media_linkers" : [
         {
             "OTIO_SCHEMA" : "MediaLinker.1",
