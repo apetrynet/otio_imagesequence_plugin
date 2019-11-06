@@ -5,16 +5,17 @@ import opentimelineio as otio
 
 
 """
-This example will create an RV session with linked image-sequence based 
+This will create an .otio file containing the new ImageSequenceReference.
+It will then print some info.
+
+This is an example as part of a dialog between developers and will most likely 
+change a lot.
+I've done a "monkey patch" of the ImageSequenceReference as an example of
+how one could get a old of a TimeRange reflecting actual frames on disk. 
+
+This example used to create an RV session with linked image-sequence based 
 media for your edl.
 
-PLEASE NOTE:
- that I replace the source_range of the clip. This is because the 
-rv_session adapter doesn't know how to handle the ImageReference files and 
-map the frame range accordingly. If this whole idea seems like a good way of 
-handling image sequences I suggest adding the ImageReference to the built in 
-schema's and adding some logic to call the `map_source_range_to_frame_range` 
-mehtod when needed in adapters like rv_session.
 """
 
 
